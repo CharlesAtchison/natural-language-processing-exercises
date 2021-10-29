@@ -298,7 +298,7 @@ def get_news_articles(cutoff=500):
         # Read the csv and define the index to be the url
         df = pd.read_csv(filename, index_col='url')
         # Check to see if the df is at least the cutoff length
-        if df.shape >= cutoff:
+        if df.shape[0] >= cutoff:
             return df
     
     # Default url, can change if it becomes broken
@@ -313,9 +313,21 @@ def get_news_articles(cutoff=500):
 
     # The kwargs will be put into the content columns
     df = crawl_url(inshorts_url, kwargs = {'name': 'p'}, extra_cols=extra_cols, cutoff=cutoff)
+    
+    # Drop the non-parsed urls
+    df = df[df.parsed]
 
     # Split the title because it contains the category within the title
-    df['category'] = df.title.apply(lambda x: x.split('|')[1])
+    def check_title(s):
+        try:
+            # Try to pull out category from title
+            return s.split('|')[1]
+        except:
+            # Return the string if no category
+            return s
+    df['category'] = df.title.apply(lambda x: check_title(x))
+    # Drop any rows that don't have articles and drop the duplicate articles
+    df = df[~df.news_articles.isna()].drop_duplicates('news_articles')
     df.to_csv(filename)
 
     return df
