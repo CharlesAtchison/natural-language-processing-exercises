@@ -99,9 +99,9 @@ def get_article_text(url):
     
     return txt
 
-def crawl_url(target: str, kwargs, extra_cols=None, reparse=False, cutoff=None):
-    '''Specify target url to start a crawl and what BeautifulSoup Function you'd like to have run looking for
-    content, you must pass the kwargs to the sub function
+def crawl_url(target: str, cols={'original': {'name': 'p'}}, reparse=False, cutoff=None):
+    '''Specify target url to start a crawl and what BeautifulSoup Function's you'd like to have run looking for
+    content, you must pass the cols and define them for the {_column_name: {_bs4_name: _tag_}}
     '''
     # list of the invalid_urls
     invalid_urls = []
@@ -110,11 +110,12 @@ def crawl_url(target: str, kwargs, extra_cols=None, reparse=False, cutoff=None):
     # extract only the base site from target
     site = re.findall(r'^https?://?(.*?)\.', base)[0]
     filename = site+'_scraped_data.csv'
-    # Default dict
-    def_dict = {'title': 'None', 'content': 'None', 'parsed': False}
-    if extra_cols:
-        for key in extra_cols.keys():
-            def_dict[key] = 'None'
+    # Default value is False parsed
+    def_dict = {'parsed': False}
+
+    # Iterate though the defined keys and set the default colum value to none
+    for key in cols.keys():
+        def_dict[key] = 'None'
     
     # Check if there is a file for that site
     if os.path.exists(filename):
@@ -135,6 +136,7 @@ def crawl_url(target: str, kwargs, extra_cols=None, reparse=False, cutoff=None):
         df = pd.DataFrame([def_dict]).set_index('url')
             
     # Ensures there are no more urls to parse
+    ### FIXME This needs to be modified to check the VALID parsed results to ensure there are enough
     while len(df[~df.parsed].parsed.to_list()) != 0 and df[df.parsed].shape[0] < cutoff:
         # Pull the dataframe in again to ensure it's fresh each iteration
         if os.path.exists(filename):
@@ -151,7 +153,7 @@ def crawl_url(target: str, kwargs, extra_cols=None, reparse=False, cutoff=None):
         url = df[~df.parsed].index[0]
 
         # Returns either None or a tuple containing the (url_dict, new_urls)
-        valid = parse_target_data(url, kwargs, extra_cols)
+        valid = parse_target_data(url, cols)
         
         if valid[0] is None:
             # Add invalid url to invalid urls
@@ -184,8 +186,6 @@ def crawl_url(target: str, kwargs, extra_cols=None, reparse=False, cutoff=None):
         df.to_csv(filename)
         print(f'Parsed {url}')
 
-    
-    print('Finshed All Combinations')        
     return df
 
 def scrape_for_more_urls(soup, base):
@@ -226,7 +226,6 @@ def scrape_for_more_urls(soup, base):
 def extract_content(soup, kwargs):
     '''Takes a BeautifulSoup Response and scapes it for all text with BeautifulSoup find function
     '''
-
     article = soup.find_all(**kwargs)
     
     # List of the content
@@ -243,17 +242,7 @@ def extract_content(soup, kwargs):
     content = ''.join(content)
     return content
 
-def extract_title(soup):
-    ''' Takes a BeautifulSoup response and extracts the title
-    '''
-    try:
-        # Returns title as string
-        return soup.title.string
-    except:
-
-        return ''
-
-def parse_target_data(url, kwargs, extra_cols=None, base=None, headers={'User-Agent': 'Codeup Data Science'}):
+def parse_target_data(url, cols, base=None, headers={'User-Agent': 'Codeup Data Science'}):
     '''the url is the target and the kwargs is the default 'content' key and extra_cols 
     needs to be defined like this:
     {'some_new_column_name': {'name': ''__tag__', '__some_html_tag__': '__searchvalue'}}
@@ -265,33 +254,35 @@ def parse_target_data(url, kwargs, extra_cols=None, base=None, headers={'User-Ag
         # If there is a error response and no_blanks are desired
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Fetches content from the tag you'd like
-        ## Specify the tag here!
-        content = extract_content(soup, kwargs)
+        # Fetches content from col tags you entered
+        content = extract_content(soup, cols)
 
     except Exception as e:
         print(e)
         return (None, None)
     
-    url_dict = {
-            'title': extract_title(soup),
-            'content': content,
-            'parsed': True}
+    # Set the url to be parsed to True
+    url_dict = {'parsed': True}
 
     # Fetch addtional content
-    if extra_cols:
-        for key, value in extra_cols.items():
-            url_dict[key] = extract_content(soup, value)
+    for key, value in cols.items():
+        url_dict[key] = extract_content(soup, value)
 
     # Fetches all urls
     new_urls = scrape_for_more_urls(soup, base)
     return (url_dict, new_urls)
 
-def get_news_articles(cutoff=500):
-    '''Pass cutoff values to get news articles and if csv already exists will return it
+
+def run_webcrawler(file: str, url: str, cols={'original' : {'name': 'p'}}, drop_dups=False, cutoff=100):
+    '''Takes a desired file str, url string content search keys 
+    as each {_column_name: {_bs4_name: _tag_}} 
+    
+    drop_dups needs to be a list of columns you'd like to drop duplicates for
+
+    cutoff is the amount of columns that would return non_dups
     '''
     # Set default filename
-    filename = 'news_articles.csv'
+    filename = f'{file}.csv'
 
     #Check if the file already exists
     if os.path.exists(filename):
@@ -300,37 +291,54 @@ def get_news_articles(cutoff=500):
         # Check to see if the df is at least the cutoff length
         if df.shape[0] >= cutoff:
             return df
-    
-    # Default url, can change if it becomes broken
-    inshorts_url = 'https://inshorts.com/en/news/airstrike-hits-capital-of-ethiopias-tigray-3-killed-report-1635433206925'
-
-    # The names of the columns you'd like go in keys and the searching parameters go into the values 
-    extra_cols = {
-    'news_articles' : {'name': 'div', 'itemprop':'articleBody'},
-    'author': {'class': 'author'},
-    'date': {'class': 'date'}
-    }
 
     # The kwargs will be put into the content columns
-    df = crawl_url(inshorts_url, kwargs = {'name': 'p'}, extra_cols=extra_cols, cutoff=cutoff)
+    df = crawl_url(url, cols, cutoff=cutoff)
     
     # Drop the non-parsed urls
     df = df[df.parsed]
+    
+    # Checks to see if duplicate column values are allowed
+    if drop_dups:
+        # Go through the defined col keys to check for nulls
+        for key in drop_dups:
+            # Drop any rows that don't have content and drop the duplicate values
+            df = df[~df[key].isna()].drop_duplicates(key)
 
-    # Split the title because it contains the category within the title
-    def check_title(s):
-        try:
-            # Try to pull out category from title
-            return s.split('|')[1]
-        except:
-            # Return the string if no category
-            return s
-    df['category'] = df.title.apply(lambda x: check_title(x))
-    # Drop any rows that don't have articles and drop the duplicate articles
-    df = df[~df.news_articles.isna()].drop_duplicates('news_articles')
+    # Save the non-duplicated dataframe as CSV
     df.to_csv(filename)
 
     return df
 
-    
+def get_codeup_blogs(cutoff=500):
+    '''Fetches codeup blogs runs the webcrawler with the predefined settings, cutoff defaults to 100
+    '''
+    # Set default filename
+    file = 'codeup_blogs'
+    # Desired URL
+    url = 'https://codeup.com/blog/'
+    # The names of the columns you'd like go in keys and the searching parameters go into the values 
+    cols = {'original' : {'name': 'p'}, 'title': {'name': 'title'}}
+    # Run the webcrawler and drop original content
+    df = run_webcrawler(file, url, cols = cols, drop_dups=['original'], cutoff=cutoff)
 
+    return df
+
+def get_news_articles(cutoff=500):
+    '''Fetches inshorts news_articles and removes blank or non articles
+    '''
+    # Set default filename
+    file = 'news_articles'
+    # Desired URL
+    url = 'https://inshorts.com/en/news/airstrike-hits-capital-of-ethiopias-tigray-3-killed-report-1635433206925'
+    # The names of the columns you'd like go in keys and the searching parameters go into the values 
+    cols = {
+        'news_articles' : {'name': 'div', 'itemprop':'articleBody'},
+        'author': {'class': 'author'},
+        'date': {'class': 'date'}
+        }
+    # Run webcrawler and drop new_article duplicates
+    df = run_webcrawler(file, url, cols = cols, drop_dups=['news_articles'], cutoff=cutoff)
+
+    return df
+    
