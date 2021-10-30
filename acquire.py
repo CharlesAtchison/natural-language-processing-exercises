@@ -319,9 +319,10 @@ def get_codeup_blogs(cutoff=500):
     url = 'https://codeup.com/blog/'
     # The names of the columns you'd like go in keys and the searching parameters go into the values 
     cols = {'original' : {'name': 'p'}, 'title': {'name': 'title'}}
+
     # Run the webcrawler and drop original content
     df = run_webcrawler(file, url, cols = cols, drop_dups=['original'], cutoff=cutoff)
-
+    
     return df
 
 def get_news_articles(cutoff=500):
@@ -334,11 +335,59 @@ def get_news_articles(cutoff=500):
     # The names of the columns you'd like go in keys and the searching parameters go into the values 
     cols = {
         'news_articles' : {'name': 'div', 'itemprop':'articleBody'},
-        'author': {'class': 'author'},
-        'date': {'class': 'date'}
+        'title': {'name': 'title'},
+        'date': {'clas': 'date'},
+        'author': {'class': 'author'}
         }
     # Run webcrawler and drop new_article duplicates
     df = run_webcrawler(file, url, cols = cols, drop_dups=['news_articles'], cutoff=cutoff)
 
-    return df
+    # Ensure that the articles are in english
+    df = df[df['news_articles'].str.contains('a')]
+
+    # Extract the cateogries from the title
+    def extract_category(s):
+        try:
+            return s.split('|')[1]
+        except:
+            return None
+    # Apply and extract the category from the titles
+    df['category'] = df.title.apply(lambda x: extract_category(x))
     
+    return df
+
+def check_url(url):
+    '''This is to check what url's are parsed out of the url that is incoming and returns new_urls 
+    and prints out a status code
+    '''
+    regex = r'''<a\s+(?:[^>]*?\s+)?href="(.*?)"'''
+    base, headers= None, {'User-Agent': 'Codeup Data Science'}
+    if not base:
+        base = re.match(r'^.*(?:com|org|gov|net|us|eu|tv|me|.co)', url)[0]
+    response = get(url, headers=headers)
+    code = response.status_code
+    # If there is a error response and no_blanks are desired
+    soup = BeautifulSoup(response.text, 'html.parser')
+    # Fetches all anchors from page
+    anchors = soup.find_all('a')
+    tmp_urls = list(set(re.findall(regex, str(anchors))))
+    urls = [u for u in tmp_urls if u not in ['', ' ']]
+    new_urls = list()
+
+    for u in urls:
+        # Checks to see if http is in the url
+        if 'http' not in u:
+            # Checks to see if the first spot is a /
+            if u[0] != '/':
+                # If not it concats the base url with the / and the url
+                temp_u = base + '/' + u 
+                new_urls.append(base + '/' + u )
+            else:
+                # Otherwise just the base url with the url
+                new_urls.append(base + u)
+        else:
+            # Add the normal url
+            new_urls.append(u)
+            
+    print('STATUS CODE', code)
+    return new_urls

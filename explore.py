@@ -21,9 +21,9 @@ class NLP_explore():
     '''Explores some plots and other features and frequencies, bigrams of 
     two selected comparisons within a dataframe based on a specific label
     '''
-    def __init__(self, data, label_col:str, text_col:str, c1:str, c2:str):
+    def __init__(self, data, label_col:str, text_col:str, comp_str_1:str, comp_str_2:str):
         '''Pass df, label_col (what is the category), text_col is
-        where the text is located, and c1 & c2 are the comparison strings
+        where the text is located, and comp_str_1 & comp_str_2 are the comparison strings
         '''
         df = data.copy(deep=True)
         # Create all class attributes
@@ -32,29 +32,29 @@ class NLP_explore():
         # Create new instance from orginial
         self.df = data.copy()
         # Comparison 1
-        self.c1 = c1
+        self.comp_str_1 = comp_str_1
         # Comparison 2
-        self.c2 = c2
+        self.comp_str_2 = comp_str_2
         
         # Clean the text
         # This is where you'd apply the cleaning for all data
-        self.df[text_col] = self.df.text.apply(basic_clean)
+        self.df[text_col] = self.df[text_col].apply(basic_clean)
         
         # Select comparison 1 from the labeled column
-        self.comp1 = df[df[label_col] == c1][text_col]
+        self.comp_series_1 = self.df[self.df[label_col] == comp_str_1][text_col]
         # Select comparison 2 from the labeled column
-        self.comp2 = df[df[label_col] == c2][text_col]
+        self.comp_series_2 = self.df[self.df[label_col] == comp_str_2][text_col]
         # Joined text from comparison 1
-        self.w1 = self.comp1.str.cat(sep=' ')
+        self.comp_text_1 = self.comp_series_1.str.cat(sep=' ')
         # Joined text from comparison 2
-        self.w2 = self.comp2.str.cat(sep=' ')
+        self.comp_text_2 = self.comp_series_2.str.cat(sep=' ')
         # All cleaned words combined
-        self.all_words = f'{self.w1} {self.w2}'        
+        self.all_words = f'{self.comp_text_1} {self.comp_text_2}'        
         
         # Calculates cond1 frequencies
-        self.cond1_freq = pd.Series(self.w1.split()).value_counts()
+        self.cond1_freq = pd.Series(self.comp_text_1.split()).value_counts()
         # Calculates cond2 frequencies
-        self.cond2_freq = pd.Series(self.w2.split()).value_counts()
+        self.cond2_freq = pd.Series(self.comp_text_2.split()).value_counts()
         # Calculates all word frequencies
         self.all_freq = pd.Series(self.all_words.split()).value_counts()
         
@@ -65,7 +65,7 @@ class NLP_explore():
              self.cond2_freq,
              self.all_freq],
             axis=1).fillna(0).astype(int)
-        word_counts.columns=[c1, c2, 'all']
+        word_counts.columns=[comp_str_1, comp_str_2, 'all']
         # Make word_counts a feature
         self.word_counts = word_counts
                        
@@ -74,12 +74,14 @@ class NLP_explore():
     def hplot_word_freq_viz(self, n=20, sort='all', asc=False):
         '''Takes n which is the number of top values you'd like to plot
         and a sort col, default is 'all', ascending defaults to False
+        but you can also choose while one of the current labels you'd like to 
+        use as a sorting feature
         '''
         plt.rc('font', size=18)
         self.word_counts.\
             sort_values(sort, ascending=asc
-                       ).head(n)[[self.c1, self.c2]].plot.barh()
-        plt.title(f'''{self.c1.capitalize()} vs {self.c2.capitalize()} count for the top {n} most frequent words''')
+                       ).head(n)[[self.comp_str_1, self.comp_str_2]].plot.barh()
+        plt.title(f'''{self.comp_str_1.capitalize()} vs {self.comp_str_2.capitalize()} count for the top {n} most frequent words''')
         plt.xlabel('Count')
         plt.show()
         
@@ -89,7 +91,8 @@ class NLP_explore():
     def stacked_bplot_freq(self, n=20, sort='all', asc=False):
         '''Takes n which is the number of top values you'd like to plot
         and a sort col, default is 'all', ascending defaults to False
-        plots a stacked barchart plot
+        plots a stacked barchart plot but you can also choose while one 
+        of the current labels you'd like to use as a sorting feature
         '''
         plt.figure(figsize=(16, 9))
         plt.rc('font', size=16)
@@ -98,10 +101,10 @@ class NLP_explore():
          .head(n)
          .apply(lambda row: row/row['all'], axis = 1)
          .drop(columns = 'all')
-         .sort_values(by = self.c1)
+         .sort_values(by = self.comp_str_1)
          .plot.barh(stacked = True, width = 1, ec = 'k')
         )
-        plt.title(f'''% of {self.c1.capitalize()} vs {self.c2.capitalize()} count for the top {n} most frequent words''')
+        plt.title(f'''% of {self.comp_str_1.capitalize()} vs {self.comp_str_2.capitalize()} count for the top {n} most frequent words''')
         plt.xlabel('Percentage')
         plt.show()
         
@@ -111,44 +114,47 @@ class NLP_explore():
     def n_gram(self, col='all', n=2, top_n=20, asc=False):
         '''Takes n which is the number of top values you'd like to pull from the 
         bigram and then you plot those pairs on a horizontal plot 
-        default is 'all', ascending defaults to False
+        default is 'all', ascending defaults to False, but you can also choose
+        while one of the current labels you'd like to use as a sorting feature
         '''
         # generates bigrams which are combinations of two words 
         # throughout the string
         
         # Condition 1 bigrams
-        if col == self.c1:
-            grams = list(nltk.ngrams(self.w1.split(), n))
+        if col == self.comp_str_1:
+            grams = list(nltk.ngrams(self.comp_text_1.split(), n))
         # Condition 2 bigrams
-        elif col == self.c2:
-            grams = list(nltk.ngrams(self.w2.split(), n))
+        elif col == self.comp_str_2:
+            grams = list(nltk.ngrams(self.comp_text_2.split(), n))
         # If all or not in the conditions go to all
         else:
             grams = list(nltk.ngrams(self.all_words.split(), n))
             
         
         # Plot the bigrams
-        pd.Series(grams).value_counts().head(n).plot.barh()
+        pd.Series(grams).value_counts().head(top_n).plot.barh()
         # Set the title
-        plt.title(f'Top {top_n} most common {col.capitalize()} {n}_grams')
+        plt.title(f'Top {top_n} most common {col.title()} {n}_grams')
         # Label the x axis with count
         plt.xlabel('Count')
         # Show plot
         plt.show()
         
         # Return the bigram for that selected column
-        return bigrams
+        return grams
     
     # Create wordcloud plot based on condition
     def plot_wordcloud(self, col='all', save=False):
         '''Allows for a wordcloud to be plotted from the 'col' of text
+        but you can also choose while one of the current labels you'd like to 
+        use as a sorting feature
         '''
         # Condition 1 words
-        if col == self.c1:
-            words = self.w1
+        if col == self.comp_str_1:
+            words = self.comp_text_1
         # Condition 2 words
-        elif col == self.c2:
-            words = self.w2
+        elif col == self.comp_str_2:
+            words = self.comp_text_2
         # If all or not in the conditions go to all
         else:
             words = self.all_words
@@ -252,10 +258,10 @@ class NLP_explore():
         default save = False
 
         '''
-        comp1 = self.c1
-        comp2 = self.c2
-        comp1_df = self.df[self.df[self.label_col] == comp1]
-        comp2_df = self.df[self.df[self.label_col] == comp2]
+        comp_series_1 = self.comp_str_1
+        comp_series_2 = self.comp_str_2
+        comp_series_1_df = self.df[self.df[self.label_col] == comp_series_1]
+        comp_series_2_df = self.df[self.df[self.label_col] == comp_series_2]
         # Iterate through features
         for feature in features:
             # Iterate though sentiments
@@ -264,15 +270,15 @@ class NLP_explore():
                 
                 
                 # Bivariate KDE plot for Comparison 1 first
-                sns.kdeplot(x= comp1_df[feature], 
-                            y= comp1_df[sentiment],
-                            levels = levels, shade = True, label=f'{comp1.title()}'
-                           ).set(title=f'{feature.title()} vs {sentiment.title()} for {comp1}')
+                sns.kdeplot(x= comp_series_1_df[feature], 
+                            y= comp_series_1_df[sentiment],
+                            levels = levels, shade = True, alpha=alpha, label=f'{comp_series_1.title()}'
+                           ).set(title=f'{feature.title()} vs {sentiment.title()} for {comp_series_1}')
                 # Then comparison 2
-                sns.kdeplot(x= comp2_df[feature], 
-                            y= comp2_df[sentiment],
-                            levels = levels, shade = True, label=f'{comp2.title()}'
-                           ).set(title=f'{feature.title()} vs {sentiment.title()} for {comp2}')
+                sns.kdeplot(x= comp_series_2_df[feature], 
+                            y= comp_series_2_df[sentiment],
+                            levels = levels, shade = True, alpha=alpha, label=f'{comp_series_2.title()}'
+                           ).set(title=f'{feature.title()} vs {sentiment.title()} for {comp_series_2}')
                 plt.legend()
                 plt.show()
                 
@@ -297,13 +303,13 @@ class NLP_explore():
         '''
         # Iterate though sentiments
         for sentiment in sentiments:
-            comp1_df = self.df[self.df[self.label_col] == self.c1]
-            comp2_df = self.df[self.df[self.label_col] == self.c2]
+            comp_series_1_df = self.df[self.df[self.label_col] == self.comp_str_1]
+            comp_series_2_df = self.df[self.df[self.label_col] == self.comp_str_2]
 
             # Plot Dist for Comparison 1 first
-            sns.kdeplot(comp1_df[sentiment], label = self.c1.title())
+            sns.kdeplot(comp_series_1_df[sentiment], label = self.comp_str_1.title())
             # Then plot Dist for Comp 2
-            sns.kdeplot(comp2_df[sentiment], label = self.c2.title())
+            sns.kdeplot(comp_series_2_df[sentiment], label = self.comp_str_2.title())
             plt.legend()
             plt.show()
             
